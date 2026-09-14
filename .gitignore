@@ -1,0 +1,17 @@
+# IDE
+.idea/
+.vscode/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Spark
+/tmp/spark-checkpoint/
+spark-warehouse/
+
+# Sistema
+.DS_Store
