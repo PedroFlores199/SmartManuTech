@@ -1,69 +1,69 @@
-# SmartManuTech — Mantenimiento predictivo industrial con Kafka y Spark
+# SmartManuTech — Industrial predictive maintenance with Kafka and Spark
 
-Sistema de monitorización IoT para una planta de fabricación: recoge la telemetría
-de 80 máquinas en tiempo real, detecta anomalías según pasa el dato y entrena un
-modelo que estima la probabilidad de fallo en las próximas 24 horas.
+IoT monitoring system for a manufacturing plant: it collects telemetry from 80 machines
+in real time, detects anomalies on the fly and trains a model that estimates
+the probability of failure in the next 24 hours.
 
-Proyecto del **Curso de Especialización en Inteligencia Artificial y Big Data**
-(módulo de Sistemas de Big Data).
+Project from the **Specialization Course in Artificial Intelligence and Big Data**
+(Big Data Systems module).
 
-## Arquitectura
+## Architecture
 
 ```mermaid
 flowchart LR
-    S["80 máquinas<br/>(sensores simulados)"] --> P["Kafka Producer<br/>sensor_producer.py"]
+    S["80 machines<br/>(simulated sensors)"] --> P["Kafka Producer<br/>sensor_producer.py"]
     P -->|topic iot-sensors| K[(Apache Kafka)]
     K --> SP["Spark Structured Streaming<br/>spark_pipeline.py"]
-    SP -->|lecturas + alertas| C[(Cassandra)]
-    SP -->|alertas != OK| L["Consola"]
+    SP -->|readings + alerts| C[(Cassandra)]
+    SP -->|alerts != OK| L["Console"]
     C --> M["RandomForest<br/>predictive_model.py"]
-    C --> A["API REST<br/>FastAPI"]
+    C --> A["REST API<br/>FastAPI"]
 ```
 
-## Qué hace cada pieza
+## What each piece does
 
-| Componente | Fichero | Qué hace |
+| Component | File | What it does |
 |---|---|---|
-| **Productor** | `producer/sensor_producer.py` | Simula 80 máquinas y publica temperatura, vibración, velocidad de producción y consumo en el topic `iot-sensors`. Inyecta anomalías en un 2 % de las lecturas para que el pipeline tenga algo que detectar. |
-| **Pipeline** | `pipeline/spark_pipeline.py` | Lee el stream de Kafka, clasifica cada lectura en `OK` / `WARNING` / `CRITICAL` / `ERROR` por umbrales, agrega en ventanas deslizantes de 1 minuto (salto de 30 s) con watermark de 10 s, y escribe en Cassandra. |
-| **Modelo** | `m1/predictive_model.py` | Pipeline de Spark ML (VectorAssembler → StandardScaler → RandomForest, 100 árboles) sobre el histórico, evaluado con AUC-ROC y con ranking de importancia de variables. |
-| **API** | `api/api.py` | FastAPI: última lectura de una máquina, alertas activas, informe de máquinas en riesgo e histórico. |
+| **Producer** | `producer/sensor_producer.py` | Simulates 80 machines and publishes temperature, vibration, production speed and power consumption to the `iot-sensors` topic. Injects anomalies into 2% of the readings so the pipeline has something to detect. |
+| **Pipeline** | `pipeline/spark_pipeline.py` | Reads the Kafka stream, classifies each reading as `OK` / `WARNING` / `CRITICAL` / `ERROR` by thresholds, aggregates over 1-minute sliding windows (30 s slide) with a 10 s watermark, and writes to Cassandra. |
+| **Model** | `m1/predictive_model.py` | Spark ML pipeline (VectorAssembler → StandardScaler → RandomForest, 100 trees) over the historical data, evaluated with AUC-ROC and with a feature importance ranking. |
+| **API** | `api/api.py` | FastAPI: latest reading for a machine, active alerts, at-risk machines report and history. |
 
-## Decisiones técnicas
+## Technical decisions
 
-- **Ventanas deslizantes con watermark.** Una lectura suelta de temperatura alta no
-  significa nada; lo que importa es la media del último minuto. El watermark de 10 s
-  permite que lleguen datos con algo de retraso sin recalcular el mundo entero.
-- **Compresión LZ4 y `linger_ms` en el productor.** Con 80 máquinas emitiendo cada
-  medio segundo, agrupar mensajes antes de enviarlos baja mucho el tráfico.
-- **Clave de partición por `machine_id`.** Así todas las lecturas de una misma máquina
-  caen en la misma partición y llegan en orden.
-- **`StandardScaler` antes del RandomForest.** No le hace falta al bosque, pero deja el
-  ranking de importancias comparable entre variables con escalas muy distintas.
+- **Sliding windows with a watermark.** A single high temperature reading means nothing;
+  what matters is the average over the last minute. The 10 s watermark lets data arrive a
+  little late without recomputing the whole world.
+- **LZ4 compression and `linger_ms` in the producer.** With 80 machines emitting every
+  half second, batching messages before sending them cuts traffic a lot.
+- **Partition key by `machine_id`.** That way all the readings from one machine land in
+  the same partition and arrive in order.
+- **`StandardScaler` before the RandomForest.** The forest doesn't need it, but it keeps
+  the importance ranking comparable across variables with very different scales.
 
-## Estado del proyecto
+## Project status
 
-Es un **proyecto académico**, no un sistema en producción. Conviene saber qué es qué:
+This is an **academic project**, not a production system. Worth knowing what is what:
 
-- ✅ **Productor y pipeline**: código funcional contra un Kafka y un Spark reales.
-- ⚠️ **API**: las rutas y los modelos Pydantic están definidos, pero **devuelven datos
-  simulados**. La conexión a Cassandra está dejada a medias (`session = None`).
-- ⚠️ **Modelo**: espera el histórico en `s3://smartmanutech-data/historical/`, que forma
-  parte del enunciado y no se incluye aquí.
+- ✅ **Producer and pipeline**: working code against a real Kafka and a real Spark.
+- ⚠️ **API**: the routes and the Pydantic models are defined, but they **return simulated
+  data**. The Cassandra connection is left half-done (`session = None`).
+- ⚠️ **Model**: it expects the historical data at `s3://smartmanutech-data/historical/`,
+  which is part of the assignment and is not included here.
 
 ## Stack
 
 Python · Apache Kafka · Apache Spark (Structured Streaming + MLlib) · Cassandra · FastAPI
 
-## Ejecución
+## Running it
 
 ```bash
 pip install kafka-python pyspark fastapi uvicorn
 
-# 1) Productor (necesita un broker en kafka-broker:9092)
+# 1) Producer (needs a broker at kafka-broker:9092)
 python producer/sensor_producer.py
 
-# 2) Pipeline de streaming
+# 2) Streaming pipeline
 spark-submit \
   --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0,com.datastax.spark:spark-cassandra-connector_2.12:3.5.0 \
   pipeline/spark_pipeline.py
@@ -72,4 +72,4 @@ spark-submit \
 uvicorn api.api:app --host 0.0.0.0 --port 8000
 ```
 
-Documentación interactiva de la API en `http://localhost:8000/docs`.
+Interactive API documentation at `http://localhost:8000/docs`.
